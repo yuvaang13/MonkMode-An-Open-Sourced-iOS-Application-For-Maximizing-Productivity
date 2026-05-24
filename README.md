@@ -33,7 +33,7 @@ MonkMode is an iOS-first focus app that helps you enforce deep work sessions wit
 - `monkmode/monkmode v2/` — earlier version
 - `LICENSE`
 
-## Quick Start (v3)
+## Quick Start
 
 1. Clone the repo: `git clone https://github.com/yuvaang13/MonkMode-app.git`
 2. Open the app folder: `cd MonkMode-app/monkmode/monkmode-v3`
