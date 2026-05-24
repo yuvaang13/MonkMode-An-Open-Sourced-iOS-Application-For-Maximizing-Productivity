@@ -80,3 +80,7 @@ Replace the placeholder RevenueCat key in:
 ## License
 
 See `LICENSE` for license details.
+
+## Developer Catch
+
+If you are not signed up for an Apple developer account then this will not work on your phone, nor will you be able to publish it. 
