@@ -20,6 +20,7 @@ import {
 import { ScreenTimeModule } from '../native/ScreenTimeModule'
 import { useWhitelistStore } from '../store/whitelistStore'
 import { useSessionStore } from '../store/sessionStore'
+import { useIAPStore } from '../store/iapStore'
 import { Colors, T, S } from '../utils/styles'
 
 interface Props {
@@ -57,6 +58,11 @@ export const DeepFocusMode: React.FC<Props> = ({ onSessionStart }) => {
   }
 
   const activateDeepFocus = async () => {
+    if (!useIAPStore.getState().canStartSession()) {
+      // Gate free users — fall back to normal paywall flow via onSessionStart callback
+      onSessionStart()
+      return
+    }
     // FamilyControls does not expose bundle identifiers to JS, so use display
     // metadata when available and otherwise fall back to blocking all selected apps.
     const blocked = installedApps
@@ -69,6 +75,8 @@ export const DeepFocusMode: React.FC<Props> = ({ onSessionStart }) => {
       } catch {
         // Session still starts; the Screen Time setup banner tells the user how to fix native permissions.
       }
+    } else {
+      // No apps inventory yet — still allow ritual but warn via config banner
     }
     await beginSession({ configOverride: { ...config, sessionKind: 'timed', durationMinutes: 999 } })
     onSessionStart()

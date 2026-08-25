@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+monkmode-v3/node_modules/
+monkmode\ v2/node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# iOS
+monkmode-v3/ios/build/
+monkmode-v3/ios/Pods/
+monkmode-v3/ios/*.xcworkspace/xcuserdata/
+monkmode-v3/ios/*.xcodeproj/xcuserdata/
+monkmode-v3/ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
+
+# Env
+.env
+.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

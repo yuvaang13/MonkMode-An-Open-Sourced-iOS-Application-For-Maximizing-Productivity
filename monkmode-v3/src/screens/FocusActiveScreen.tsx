@@ -55,8 +55,8 @@ export const FocusActiveScreen: React.FC = () => {
     if (secsLeft > 0 || completedRef.current || phase !== 'active') return
     completedRef.current = true
     ;(async () => {
-      await recordSessionComplete(durationMinutes, { source: 'manual' })
-      await trackEvent('session_completed', { durationMinutes })
+      try { await recordSessionComplete(durationMinutes, { source: 'manual' }) } catch {}
+      try { await trackEvent('session_completed', { durationMinutes }) } catch {}
       if (!useIAPStore.getState().hasPurchased()) {
         useIAPStore.getState().incrementFreeSession()
       }
@@ -71,8 +71,12 @@ export const FocusActiveScreen: React.FC = () => {
   const allowedApps = installedApps.filter(a => allowedTokens.has(a.token)).slice(0, 3)
 
   const handleEndAttempt = () => {
-    if (config.hardLock) { Vibration.vibrate(80); return }
-    recordOverrideAttempt(false)
+    if (config.hardLock) {
+      Vibration.vibrate([0, 80, 60, 80])
+      // subtle feedback via progress bar flash — hard lock is intentional friction
+      return
+    }
+    void recordOverrideAttempt(false)
     setShowOverride(true)
   }
 
@@ -169,13 +173,15 @@ export const FocusActiveScreen: React.FC = () => {
         <OverrideModal
           verifyPasscode={verifyOverridePasscode}
           onConfirmedEnd={async () => {
+            try { await recordSessionComplete(Math.max(1, Math.round((Date.now() - (startedAt ?? Date.now()))/60000)), { source: 'manual' }) } catch {}
+            try { void recordOverrideAttempt(true) } catch {}
             await endSession()
             setShowOverride(false)
           }}
           onDismiss={() => setShowOverride(false)}
           onJustification={text => {
-            recordJustification('', text)
-            recordOverrideAttempt(true, text)
+            void recordJustification('', text)
+            void recordOverrideAttempt(true, text)
           }}
         />
       )}

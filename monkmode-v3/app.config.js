@@ -6,13 +6,15 @@ module.exports = {
   expo: {
     name: 'MonkMode',
     slug: 'monkmode',
-    version: '0.1.0',
+    version: '1.0.0',
     scheme: 'monkmode',
     orientation: 'portrait',
-    platforms: ['ios'],
+    userInterfaceStyle: 'dark',
+    backgroundColor: '#0a0a0a',
+    platforms: ['ios', 'web'],
     ios: {
       bundleIdentifier,
-      buildNumber: '1',
+      buildNumber: '2',
       supportsTablet: false,
       deploymentTarget: '16.0',
       entitlements: enableNativeScreenTime
@@ -37,6 +39,7 @@ module.exports = {
     },
     plugins: [
       'expo-notifications',
+      'expo-font',
     ],
     extra: {
       bundleIdentifier,

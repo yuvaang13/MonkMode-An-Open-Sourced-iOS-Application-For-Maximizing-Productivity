@@ -41,8 +41,10 @@ export const OverrideModal: React.FC<Props> = ({
 
   useEffect(() => {
     AsyncStorage.getItem('monkmode:commitment').then(raw => {
-      if (raw) setCommitment(JSON.parse(raw))
-    })
+      if (raw) {
+        try { setCommitment(JSON.parse(raw)) } catch {}
+      }
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {

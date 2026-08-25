@@ -108,17 +108,20 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
       AsyncStorage.getItem(KEYS.justifications),
     ])
 
-    const sessions: SessionRecord[] = sessionsRaw ? JSON.parse(sessionsRaw) : []
+    let sessions: SessionRecord[] = []
+    let attempts: Array<{ date: string; app: string }> = []
+    let justifications: Justification[] = []
+    try { sessions = sessionsRaw ? JSON.parse(sessionsRaw) : [] } catch { sessions = [] }
+    try { attempts = attemptsRaw ? JSON.parse(attemptsRaw) : [] } catch { attempts = [] }
+    try { justifications = justRaw ? JSON.parse(justRaw) : [] } catch { justifications = [] }
+    if (!Array.isArray(sessions)) sessions = []
+    if (!Array.isArray(attempts)) attempts = []
+    if (!Array.isArray(justifications)) justifications = []
+
     const normalized = sessions.map(s => ({
       ...s,
       source: (s.source ?? 'manual') as SessionSource,
     }))
-
-    const attempts: Array<{ date: string; app: string }> =
-      attemptsRaw ? JSON.parse(attemptsRaw) : []
-
-    const justifications: Justification[] =
-      justRaw ? JSON.parse(justRaw) : []
 
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 86400000)
@@ -129,33 +132,47 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
     const weekly: WeeklyStats = {
       sessionsCompleted: recentSessions.length,
       automaticSessionsCompleted: autoRecent.length,
-      hoursEnforced: Math.round(recentSessions.reduce((s, r) => s + r.duration, 0) / 60),
+      hoursEnforced: Number((recentSessions.reduce((s, r) => s + r.duration, 0) / 60).toFixed(1)),
       overrideAttempts: recentSessions.reduce((s, r) => s + r.overrideAttempts, 0),
       overridesGranted: recentSessions.filter(r => r.overrideGranted).length,
     }
 
+    // Use local calendar dates for block-attempt aggregation (fixes UTC misalignment)
+    const toLocalKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     const dayMap: Record<string, DayBlockData> = {}
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now.getTime() - i * 86400000)
-      const key = d.toISOString().split('T')[0]
+      const key = toLocalKey(d)
       dayMap[key] = { label: DAY_LABELS[d.getDay()], date: key, count: 0, apps: [] }
     }
     for (const a of attempts) {
-      const key = a.date.split('T')[0]
-      if (dayMap[key]) {
-        dayMap[key].count += 1
-        if (!dayMap[key].apps.includes(a.app)) dayMap[key].apps.push(a.app)
-      }
+      try {
+        const dt = new Date(a.date)
+        const key = toLocalKey(dt)
+        if (dayMap[key]) {
+          dayMap[key].count += 1
+          if (!dayMap[key].apps.includes(a.app)) dayMap[key].apps.push(a.app)
+        }
+      } catch { /* ignore malformed dates */ }
     }
 
-    const sessionDates = [...new Set(normalized.map(s => s.date.split('T')[0]))].sort()
+    // Calendar-aware streak (handles DST correctly)
+    const calendarDiffDays = (a: string, b: string) => {
+      const da = new Date(a + 'T00:00:00')
+      const db = new Date(b + 'T00:00:00')
+      return Math.round((da.getTime() - db.getTime()) / 86400000)
+    }
+    const toLocalKey2 = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    const localSessionDates = [...new Set(normalized.map(s => {
+      try { return toLocalKey2(new Date(s.date)) } catch { return '' }
+    }).filter(Boolean))].sort()
     let currentStreak = 0
     let longestStreak = 0
     let streak = 0
     let prev: string | null = null
-    for (const date of sessionDates) {
+    for (const date of localSessionDates) {
       if (prev) {
-        const diff = (new Date(date).getTime() - new Date(prev).getTime()) / 86400000
+        const diff = calendarDiffDays(date, prev)
         streak = diff === 1 ? streak + 1 : 1
       } else {
         streak = 1
@@ -163,14 +180,15 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
       longestStreak = Math.max(longestStreak, streak)
       prev = date
     }
-    const todayStr = now.toISOString().split('T')[0]
-    const yesterdayStr = new Date(now.getTime() - 86400000).toISOString().split('T')[0]
-    const lastDate = sessionDates[sessionDates.length - 1]
+    const todayStr = toLocalKey2(now)
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate()-1)
+    const yesterdayStr = toLocalKey2(yesterday)
+    const lastDate = localSessionDates[localSessionDates.length - 1]
     currentStreak = (lastDate === todayStr || lastDate === yesterdayStr) ? streak : 0
 
     const allTime: AllTimeStats = {
       totalSessions: normalized.length,
-      totalHours: Math.round(normalized.reduce((s, r) => s + r.duration, 0) / 60),
+      totalHours: Number((normalized.reduce((s, r) => s + r.duration, 0) / 60).toFixed(1)),
       longestStreak,
       currentStreak,
       totalBlockAttempts: attempts.length,
@@ -185,8 +203,12 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
   },
 
   recordSessionComplete: async (durationMinutes, opts) => {
-    const raw = await AsyncStorage.getItem(KEYS.sessions)
-    const sessions: SessionRecord[] = raw ? JSON.parse(raw) : []
+    let sessions: SessionRecord[] = []
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.sessions)
+      sessions = raw ? JSON.parse(raw) : []
+      if (!Array.isArray(sessions)) sessions = []
+    } catch { sessions = [] }
     sessions.push({
       date: new Date().toISOString(),
       duration: durationMinutes,
@@ -195,6 +217,8 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
       source: opts?.source ?? 'manual',
       scheduleId: opts?.scheduleId,
     })
+    // keep storage bounded: retain last 500 sessions
+    if (sessions.length > 500) sessions = sessions.slice(-500)
     await AsyncStorage.setItem(KEYS.sessions, JSON.stringify(sessions))
     await get().loadStats()
     syncPublicProfileIfNeeded(get())
@@ -202,10 +226,16 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
 
   ingestScheduledCompletions: async items => {
     if (items.length === 0) return
-    const raw = await AsyncStorage.getItem(KEYS.sessions)
-    const sessions: SessionRecord[] = raw ? JSON.parse(raw) : []
+    let sessions: SessionRecord[] = []
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.sessions)
+      sessions = raw ? JSON.parse(raw) : []
+      if (!Array.isArray(sessions)) sessions = []
+    } catch { sessions = [] }
     for (const c of items) {
-      const date = new Date(c.endedAt * 1000).toISOString()
+      // Handle both ms and seconds timestamps gracefully
+      const ts = c.endedAt > 1e12 ? c.endedAt : c.endedAt > 1e10 ? c.endedAt : c.endedAt * 1000
+      const date = new Date(ts).toISOString()
       sessions.push({
         date,
         duration: c.durationMinutes,
@@ -215,15 +245,17 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
         scheduleId: c.scheduleId === 'session' ? undefined : c.scheduleId,
       })
     }
+    if (sessions.length > 500) sessions = sessions.slice(-500)
     await AsyncStorage.setItem(KEYS.sessions, JSON.stringify(sessions))
     await get().loadStats()
     syncPublicProfileIfNeeded(get())
     for (const c of items) {
+      const ts = c.endedAt > 1e12 ? c.endedAt : c.endedAt > 1e10 ? c.endedAt : c.endedAt * 1000
       void sendWebhookIfEligible('session/end', {
         source: 'schedule',
         scheduleId: c.scheduleId,
         durationMinutes: c.durationMinutes,
-        endedAt: new Date(c.endedAt * 1000).toISOString(),
+        endedAt: new Date(ts).toISOString(),
       })
     }
   },
@@ -236,26 +268,33 @@ export const useStatsStore = create<StatsState>()((set, get) => ({
   },
 
   recordOverrideAttempt: async (granted, justification) => {
-    const raw = await AsyncStorage.getItem(KEYS.sessions)
-    if (!raw) return
-    const sessions = JSON.parse(raw)
-    if (sessions.length > 0) {
-      sessions[sessions.length - 1].overrideAttempts += 1
-      if (granted) sessions[sessions.length - 1].overrideGranted = true
-    }
-    await AsyncStorage.setItem(KEYS.sessions, JSON.stringify(sessions))
-    if (justification) get().recordJustification('', justification)
-    await get().loadStats()
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.sessions)
+      if (!raw) return
+      const sessions = JSON.parse(raw)
+      if (Array.isArray(sessions) && sessions.length > 0) {
+        sessions[sessions.length - 1].overrideAttempts += 1
+        if (granted) sessions[sessions.length - 1].overrideGranted = true
+        await AsyncStorage.setItem(KEYS.sessions, JSON.stringify(sessions))
+      }
+      if (justification) await get().recordJustification('', justification)
+      await get().loadStats()
+    } catch { /* ignore corrupted storage */ }
   },
 
   recordJustification: async (sessionId, text) => {
-    const raw = await AsyncStorage.getItem(KEYS.justifications)
-    const list: Justification[] = raw ? JSON.parse(raw) : []
-    list.push({
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      text,
-      sessionId,
-    })
-    await AsyncStorage.setItem(KEYS.justifications, JSON.stringify(list))
+    try {
+      const raw = await AsyncStorage.getItem(KEYS.justifications)
+      const list: Justification[] = raw ? JSON.parse(raw) : []
+      const safeList = Array.isArray(list) ? list : []
+      safeList.push({
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        text,
+        sessionId,
+      })
+      // cap justifications
+      const trimmed = safeList.slice(-50)
+      await AsyncStorage.setItem(KEYS.justifications, JSON.stringify(trimmed))
+    } catch { /* ignore */ }
   },
 }))

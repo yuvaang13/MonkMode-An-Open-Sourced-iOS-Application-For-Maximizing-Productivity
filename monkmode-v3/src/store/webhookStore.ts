@@ -39,15 +39,23 @@ async function writeQueue(q: QueuedWebhook[]) {
 }
 
 async function postJson(url: string, body: object, secret: string): Promise<boolean> {
-  if (!url.trim()) return true
+  if (!url.trim()) return false
   try {
+    const trimmed = url.trim()
+    // Basic URL validation to avoid silently dropping queued webhooks
+    const parsed = new URL(trimmed)
+    if (!/^https?:$/.test(parsed.protocol)) return false
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (secret.trim()) headers['X-MonkMode-Secret'] = secret.trim()
-    const res = await fetch(url.trim(), {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    const res = await fetch(trimmed, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal: controller.signal as any,
     })
+    clearTimeout(timeout)
     return res.ok
   } catch {
     return false
@@ -99,12 +107,12 @@ export async function sendWebhookNow(
   const { startUrl, endUrl, secret, enqueue, flushQueue } = useWebhookStore.getState()
   const url = event === 'session/start' ? startUrl : endUrl
   if (!url.trim()) {
-    await enqueue(event, payload)
+    // No webhook configured — don't queue, just skip
     return
   }
   const ok = await postJson(url, { event, ...payload }, secret)
   if (!ok) await enqueue(event, payload)
-  await flushQueue()
+  else await flushQueue()
 }
 
 export async function sendWebhookIfEligible(

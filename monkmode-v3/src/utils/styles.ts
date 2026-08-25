@@ -13,15 +13,19 @@ export const Colors = {
   bgCard:    '#131313',
   border:    '#1f1f1f',
   borderMid: '#2a2a2a',
-  borderHi:  '#444440',
-  textDim:   '#2a2a2a',
-  textMid:   '#444440',
-  textSub:   '#888880',
+  borderHi:  '#3a3a32',
+  textDim:   '#333330',
+  textMid:   '#5a5a54',
+  textSub:   '#9a9a8e',
   textBody:  '#d0d0c8',
   textHi:    '#f5f5f0',
+  accent:    '#f5f5f0',
+  accentMuted: '#2a2a28',
 } as const
 
-/** Typography base styles — apply as spread: { ...T.mono, fontSize: 12 } */
+/** Typography base styles — apply as spread: { ...T.mono, fontSize: 12 }
+ * Falls back gracefully to system monospace if custom fonts not loaded (Expo Font optional).
+ */
 export const T = {
   display: {
     fontFamily: 'BebasNeue-Regular',
@@ -40,6 +44,11 @@ export const T = {
     color: Colors.textBody,
   },
 } as const
+
+export const FontFallback = {
+  display: { fontFamily: 'System', fontWeight: '800' as const },
+  mono: { fontFamily: 'Courier New' as const },
+}
 
 /** Common shared component styles */
 export const S = StyleSheet.create({
@@ -83,14 +92,29 @@ export const S = StyleSheet.create({
     textTransform: 'uppercase' as const,
   },
   primaryBtn: {
-    height: 48,
+    height: 52,
     borderWidth: 1,
     borderColor: Colors.textHi,
     borderRadius: 2,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+    backgroundColor: Colors.textHi,
   },
   primaryBtnText: {
+    fontFamily: 'BebasNeue-Regular',
+    fontSize: 14,
+    color: Colors.bg,
+    letterSpacing: 3,
+  },
+  primaryBtnOutline: {
+    height: 52,
+    borderWidth: 1,
+    borderColor: Colors.borderHi,
+    borderRadius: 2,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  primaryBtnOutlineText: {
     fontFamily: 'BebasNeue-Regular',
     fontSize: 14,
     color: Colors.textHi,
@@ -110,5 +134,12 @@ export const S = StyleSheet.create({
     color: Colors.textMid,
     letterSpacing: 2,
     textTransform: 'uppercase' as const,
+  },
+  card: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 2,
+    backgroundColor: Colors.bgCard,
+    overflow: 'hidden' as const,
   },
 })

@@ -48,8 +48,12 @@ export async function verifyOverridePasscode(pin: string): Promise<boolean> {
  * Check whether an override passcode has been configured.
  */
 export async function hasOverridePasscode(): Promise<boolean> {
-  const result = await Keychain.getGenericPassword({ service: SERVICE_KEY })
-  return !!result
+  try {
+    const result = await Keychain.getGenericPassword({ service: SERVICE_KEY })
+    return !!result
+  } catch {
+    return false
+  }
 }
 
 /**

@@ -110,8 +110,11 @@ export const useSessionStore = create<SessionState>()(
         get().refreshRetentionState()
         const config = { ...get().config, ...(options.configOverride ?? {}) }
         const now = Date.now()
-        const today = new Date().toISOString().split('T')[0]
-        const yesterday = new Date(now - 86400000).toISOString().split('T')[0]
+        const nowD = new Date(now)
+        const toLocalKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+        const today = toLocalKey(nowD)
+        const yD = new Date(nowD); yD.setDate(yD.getDate()-1)
+        const yesterday = toLocalKey(yD)
         const { streak, lastSessionDate } = get()
 
         const newStreak =
@@ -210,7 +213,8 @@ export const useSessionStore = create<SessionState>()(
         set(state => ({ config: { ...state.config, ...patch } })),
 
       markDailyCheckIn: () => {
-        const today = new Date().toISOString().split('T')[0]
+        const toLocalKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+        const today = toLocalKey(new Date())
         set(state => (
           state.dailyCheckIns.includes(today)
             ? state
@@ -229,17 +233,17 @@ export const useSessionStore = create<SessionState>()(
       },
 
       refreshRetentionState: () => {
+        // Use local week (Monday) to align with growthStore
+        const { getLocalWeekRangeMs } = require('./growthStore')
         const now = new Date()
-        const weekKey = `${now.getUTCFullYear()}-${Math.ceil(
-          (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) -
-            Date.UTC(now.getUTCFullYear(), 0, 1) +
-            86400000) /
-            604800000
-        )}`
+        const { start } = getLocalWeekRangeMs(now)
+        const weekKey = `${new Date(start).toISOString().split('T')[0]}`
 
         const state = get()
-        const today = now.toISOString().split('T')[0]
-        const yesterday = new Date(now.getTime() - 86400000).toISOString().split('T')[0]
+        const toLocalKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+        const today = toLocalKey(now)
+        const yesterdayD = new Date(now); yesterdayD.setDate(yesterdayD.getDate()-1)
+        const yesterday = toLocalKey(yesterdayD)
         const needsRecovery =
           !!state.lastSessionDate &&
           state.lastSessionDate !== today &&
@@ -256,7 +260,19 @@ export const useSessionStore = create<SessionState>()(
       },
 
       tick: () => {
-        /* Session end + stats are handled in FocusActiveScreen when the timer hits zero. */
+        const { status, endsAt } = get()
+        if (status !== 'active' || !endsAt) return
+        if (Date.now() >= endsAt) {
+          // Auto-complete via store so killing the UI doesn't orphan wallpaper/locks
+          void (async () => {
+            try {
+              const { useStatsStore } = await import('./statsStore')
+              const duration = get().durationMinutes
+              await useStatsStore.getState().recordSessionComplete(duration, { source: get().activeSessionKind === 'multiDay' ? 'multi_day' : 'manual' })
+            } catch { /* ignore */ }
+            await get().endSession()
+          })()
+        }
       },
     }),
     {

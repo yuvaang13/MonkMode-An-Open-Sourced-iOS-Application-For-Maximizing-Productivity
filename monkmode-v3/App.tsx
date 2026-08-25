@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, ActivityIndicator } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 
@@ -41,11 +41,32 @@ export default function App() {
   const [purchaseTrigger, setPurchaseTrigger] = useState<PurchaseTrigger>('manual')
   const [profileOpen, setProfileOpen] = useState(false)
   const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const [fontsReady, setFontsReady] = useState(false)
   const { load, trackEvent } = useGrowthStore()
 
   useSessionTimer()
 
   const isWeb = Platform.OS === 'web'
+
+  // Optional font loading — falls back to system if assets not bundled
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const Font = await import('expo-font')
+        // Fonts are optional; if files missing, fall back to system
+        await Font.loadAsync({
+          'BebasNeue-Regular': require('./assets/fonts/BebasNeue-Regular.ttf'),
+          'DMMono-Regular': require('./assets/fonts/DMMono-Regular.ttf'),
+          'DMMono-Light': require('./assets/fonts/DMMono-Light.ttf'),
+          'DMSans-Regular': require('./assets/fonts/DMSans-Regular.ttf'),
+        } as any).catch(() => {})
+      } catch {}
+      if (mounted) setFontsReady(true)
+    })()
+    const t = setTimeout(() => mounted && setFontsReady(true), 1200)
+    return () => { mounted = false; clearTimeout(t) }
+  }, [])
 
   useEffect(() => {
     if (isWeb) {
@@ -74,26 +95,34 @@ export default function App() {
         // Skip native-only integrations on web
         return
       }
-      await useIAPStore.getState().checkEntitlement()
-      const rawIntentions = await AsyncStorage.getItem('monkmode:implementation_intentions')
-      if (rawIntentions) {
-        try {
-          await DeviceActivityModule.setAppGroupJSON(
-            'monk_implementation_intentions_json',
-            JSON.parse(rawIntentions)
-          )
-        } catch { /* ignore */ }
-      }
-      const { completions } = await DeviceActivityModule.drainPendingScheduleCompletions()
-      if (completions.length > 0) {
-        await useStatsStore.getState().ingestScheduledCompletions(completions)
-      }
-      await useWebhookStore.getState().flushQueue()
-      await ensureWeeklyMentorNotification()
+      try { await useIAPStore.getState().checkEntitlement() } catch {}
+      try {
+        const rawIntentions = await AsyncStorage.getItem('monkmode:implementation_intentions')
+        if (rawIntentions) {
+          try {
+            await DeviceActivityModule.setAppGroupJSON(
+              'monk_implementation_intentions_json',
+              JSON.parse(rawIntentions)
+            )
+          } catch { /* ignore */ }
+        }
+      } catch {}
+      try {
+        const { completions } = await DeviceActivityModule.drainPendingScheduleCompletions()
+        if (completions.length > 0) {
+          await useStatsStore.getState().ingestScheduledCompletions(completions)
+        }
+      } catch {}
+      try { await useWebhookStore.getState().flushQueue() } catch {}
+      try { await ensureWeeklyMentorNotification() } catch {}
     })()
   }, [onboarded])
 
   useEffect(() => {
+    // Handle cold-start deep link
+    Linking.getInitialURL().then(url => {
+      if (url && url.startsWith('monkmode://friendlock')) setActiveTab('settings')
+    }).catch(() => {})
     const handleURL = ({ url }: { url: string }) => {
       if (url.startsWith('monkmode://friendlock')) {
         setActiveTab('settings')
@@ -123,7 +152,10 @@ export default function App() {
   useEffect(() => {
     if (!isWeb) return
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js').catch(() => { /* ignore */ })
+      // Only register if file exists (web build may not include it)
+      fetch('/service-worker.js', { method: 'HEAD' }).then(r => {
+        if (r.ok) navigator.serviceWorker.register('/service-worker.js').catch(() => {})
+      }).catch(() => {})
     }
   }, [])
 
@@ -150,7 +182,16 @@ export default function App() {
     setPurchaseOpen(true)
   }
 
-  if (onboarded === null) return null
+  if (onboarded === null || !fontsReady) {
+    return (
+      <SafeAreaProvider>
+        <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]}>
+          <Text style={{ ...T.display, fontSize: 32, letterSpacing: 8 }}>MONK MODE</Text>
+          <ActivityIndicator color={Colors.textMid} style={{ marginTop: 16 }} />
+        </View>
+      </SafeAreaProvider>
+    )
+  }
 
   if (!onboarded) {
     return (
@@ -258,30 +299,34 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.border,
     backgroundColor: Colors.bg,
+    paddingTop: 2,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     position: 'relative',
   },
   tabLabel: {
     ...T.mono,
     fontSize: 8,
-    color: Colors.textMid,
-    letterSpacing: 2,
+    color: Colors.textDim,
+    letterSpacing: 2.2,
     textTransform: 'uppercase',
+    opacity: 0.9,
   },
   tabLabelActive: {
     color: Colors.textHi,
+    opacity: 1,
   },
   tabIndicator: {
     position: 'absolute',
     top: 0,
-    left: '25%',
-    right: '25%',
-    height: 1,
+    left: '30%',
+    right: '30%',
+    height: 2,
     backgroundColor: Colors.textHi,
+    borderRadius: 1,
   },
   installBanner: {
     position: 'absolute',

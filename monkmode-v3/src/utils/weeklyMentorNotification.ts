@@ -8,21 +8,28 @@ import { useGrowthStore } from '../store/growthStore'
 
 const NOTIF_ID = 'monkmode_weekly_mentor_v1'
 
+let handlerSet = false
 export async function ensureWeeklyMentorNotification(): Promise<void> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return
   try {
     const Notifications = await import('expo-notifications')
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-      }),
-    })
-    const { status } = await Notifications.getPermissionsAsync()
-    if (status !== 'granted') {
-      await Notifications.requestPermissionsAsync()
+    if (!handlerSet) {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+        }),
+      })
+      handlerSet = true
     }
+    const { status } = await Notifications.getPermissionsAsync()
+    let granted = status === 'granted'
+    if (status !== 'granted') {
+      const res = await Notifications.requestPermissionsAsync()
+      granted = res.status === 'granted'
+    }
+    if (!granted) return
     await Notifications.cancelScheduledNotificationAsync(NOTIF_ID)
     await useStatsStore.getState().loadStats()
     await useGrowthStore.getState().load()

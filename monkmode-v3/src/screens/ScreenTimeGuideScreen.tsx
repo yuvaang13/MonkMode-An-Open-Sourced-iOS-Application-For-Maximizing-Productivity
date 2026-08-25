@@ -93,9 +93,11 @@ export const ScreenTimeGuideScreen: React.FC<Props> = ({ onComplete, onSkip }) =
 
   const handleAction = () => {
     if (step === 1) {
-      Linking.openURL('App-prefs:SCREEN_TIME').catch(() =>
-        Linking.openURL('app-settings:')
-      )
+      // App-prefs is private API and rejected by App Review. Use public API.
+      Linking.openSettings().catch(() => {
+        // fallback: try generic settings URL
+        Linking.openURL('app-settings:').catch(() => {})
+      })
     }
     if (step === 5) {
       onComplete()

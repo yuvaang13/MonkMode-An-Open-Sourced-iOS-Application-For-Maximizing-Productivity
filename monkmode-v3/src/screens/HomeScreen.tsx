@@ -58,13 +58,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNeedPurchase }) => {
   useEffect(() => {
     WallpaperModule.getWallpaperPath().then(r => {
       if (r.exists && r.path) setWallpaperPath(r.path)
-    })
+    }).catch(() => {})
     AsyncStorage.getItem('monkmode:commitment').then(raw => {
       if (!raw) return
-      const parsed = JSON.parse(raw)
-      setCommitmentReason(parsed.reason ?? '')
-      setCommitmentGoal(parsed.goal ?? 'deep_work')
-    })
+      try {
+        const parsed = JSON.parse(raw)
+        setCommitmentReason(parsed.reason ?? '')
+        setCommitmentGoal(parsed.goal ?? 'deep_work')
+      } catch { /* ignore corrupt */ }
+    }).catch(() => {})
     refreshRetentionState()
   }, [])
 
@@ -89,7 +91,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNeedPurchase }) => {
   const dateStr = `${DAYS[now.getDay()]} · ${MONTHS[now.getMonth()]} ${now.getDate()}`
 
   const allowedCount = allowedTokens.size
-  const blockedCount = installedApps.length - allowedCount
+  const blockedCount = Math.max(0, installedApps.length - allowedCount)
 
   const handleBeginSession = async () => {
     if (!useIAPStore.getState().canStartSession()) {
@@ -200,7 +202,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNeedPurchase }) => {
         <View style={styles.section}>
           <Text style={S.sectionLabel}>MISSION ANCHOR</Text>
           <View style={styles.anchorCard}>
-            <Text style={styles.anchorGoal}>PRIMARY GOAL · {commitmentGoal.replace('_', ' ').toUpperCase()}</Text>
+            <Text style={styles.anchorGoal}>PRIMARY GOAL · {commitmentGoal.replace(/_/g, ' ').toUpperCase()}</Text>
             <Text style={styles.anchorText}>"{commitmentReason}"</Text>
           </View>
         </View>
@@ -294,7 +296,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNeedPurchase }) => {
       <View style={S.divider} />
 
       {/* Deep Focus */}
-      <DeepFocusMode onSessionStart={() => {}} />
+      <DeepFocusMode onSessionStart={() => {
+        if (!useIAPStore.getState().canStartSession()) onNeedPurchase?.('session_limit')
+      }} />
 
       {/* Begin */}
       <TouchableOpacity

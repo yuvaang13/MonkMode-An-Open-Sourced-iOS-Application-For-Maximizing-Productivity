@@ -10,7 +10,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Switch, Alert, TextInput,
+  TouchableOpacity, Switch, Alert, TextInput, Share, Linking,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSessionStore } from '../store/sessionStore'
@@ -71,12 +71,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { trackEvent } = useGrowthStore()
 
   useEffect(() => {
-    hasOverridePasscode().then(setHasPasscode)
-    getFriendLockState().then(s => setFriendLockActive(s.active))
-    AsyncStorage.getItem('monkmode:grayscale').then(v => setGrayscale(v === 'true'))
+    hasOverridePasscode().then(setHasPasscode).catch(() => setHasPasscode(false))
+    getFriendLockState().then(s => setFriendLockActive(s.active)).catch(() => {})
+    AsyncStorage.getItem('monkmode:grayscale').then(v => setGrayscale(v === 'true')).catch(() => {})
     AsyncStorage.getItem('monkmode:wallpaper_enabled').then(v =>
       setWallpaperEnabled(v !== 'false')  // default true
-    )
+    ).catch(() => {})
   }, [])
 
   const toggleWallpaper = async (val: boolean) => {
@@ -114,12 +114,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           text: 'Reset Everything',
           style: 'destructive',
           onPress: async () => {
-            await AsyncStorage.clear()
-            await clearOverridePasscode()
+            try { await AsyncStorage.clear() } catch {}
+            try { await clearOverridePasscode() } catch {}
+            Alert.alert('Reset complete', 'Restart the app to see onboarding again.', [
+              { text: 'OK', onPress: () => { try { Linking.openSettings() } catch {} } },
+            ])
           },
         },
       ]
     )
+  }
+
+  const handleExport = async () => {
+    try {
+      const keys = ['stats:sessions', 'stats:block_attempts', 'stats:justifications', 'monkmode:commitment', 'monkmode:growth_events']
+      const pairs = await AsyncStorage.multiGet(keys)
+      const payload: Record<string, unknown> = {}
+      for (const [k, v] of pairs) {
+        if (v) { try { payload[k] = JSON.parse(v) } catch { payload[k] = v } }
+      }
+      const text = JSON.stringify(payload, null, 2)
+      await Share.share({ message: text, title: 'MonkMode Export' })
+    } catch (e: any) {
+      Alert.alert('Export failed', e?.message ?? 'Could not export data')
+    }
   }
 
   const cycleDuration = () => {
@@ -262,15 +280,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           />
         </Row>
         <View style={S.divider} />
-        <Row label="Restore original wallpaper on end">
-          <Switch
-            value={wallpaperEnabled}
-            onValueChange={toggleWallpaper}
-            trackColor={{ false: Colors.border, true: Colors.borderHi }}
-            thumbColor={wallpaperEnabled ? Colors.textHi : Colors.textMid}
-            ios_backgroundColor={Colors.border}
-          />
-        </Row>
+        <Text style={styles.hintRow}>
+          Restores automatically when a session ends. Disable above to keep your own wallpaper.
+        </Text>
       </View>
 
       {/* ── Public & purchase ── */}
@@ -354,7 +366,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       <View style={styles.group}>
         <Row label="All data stored on-device only" value="NO CLOUD" />
         <View style={S.divider} />
-        <Row label="Export session log" value="→" onPress={() => {}} />
+        <Row label="Export session log" value="→" onPress={handleExport} />
       </View>
 
       {/* ── Danger ── */}
@@ -424,6 +436,15 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
+  },
+  hintRow: {
+    ...T.mono,
+    fontSize: 9,
+    color: Colors.textDim,
+    lineHeight: 14,
+    letterSpacing: 0.3,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   whInput: {
     ...T.mono,
