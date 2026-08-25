@@ -1,0 +1,40 @@
+{
+  "cli": {
+    "version": ">= 10.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "buildConfiguration": "Debug",
+        "simulator": false,
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "IOS_BUNDLE_IDENTIFIER": "com.yuvi10.monkmode",
+        "IOS_APP_GROUP": "group.com.yuvi10.monkmode"
+      }
+    },
+    "native-screen-time": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "buildConfiguration": "Debug",
+        "simulator": false
+      },
+      "env": {
+        "IOS_BUNDLE_IDENTIFIER": "com.yuvi10.monkmode",
+        "IOS_APP_GROUP": "group.com.yuvi10.monkmode",
+        "MONKMODE_NATIVE_SCREEN_TIME": "1"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "buildConfiguration": "Release",
+        "simulator": false
+      }
+    }
+  }
+}
